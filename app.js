@@ -19,7 +19,136 @@ const menuScreen = document.getElementById("menuScreen");
 const gameScreen = document.getElementById("gameScreen");
 const startGameBtn = document.getElementById("startGame");
 const backToMenuBtn = document.getElementById("backToMenu");
+
 let state, selected = null, legalTargets = [], history = [], busy = false, gameOver = false, lastMove = null;
+
+// やねうら王 WebAssembly エンジン。起動できない環境では簡易CPUへフォールバックする。
+let engineInstance = null;
+let engineInitPromise = null;
+let engineReady = false;
+let engineFailure = "";
+let engineLineListeners = [];
+let engineModeLabel = "簡易CPU";
+
+function engineLine(line) {
+  const text = String(line).trim();
+  for (const listener of [...engineLineListeners]) listener(text);
+}
+function waitEngineLine(match, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    const listener = line => {
+      if (match(line)) {
+        clearTimeout(timer);
+        engineLineListeners = engineLineListeners.filter(fn => fn !== listener);
+        resolve(line);
+      }
+    };
+    engineLineListeners.push(listener);
+    timer = setTimeout(() => {
+      engineLineListeners = engineLineListeners.filter(fn => fn !== listener);
+      reject(new Error("エンジン応答待ちがタイムアウトしました"));
+    }, timeoutMs);
+  });
+}
+function loadEngineScript() {
+  if (window.YaneuraOu_nosimd) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "./engine/nosimd/yaneuraou.js";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("エンジンのJavaScriptを読み込めません"));
+    document.head.appendChild(script);
+  });
+}
+async function ensureEngine() {
+  if (engineReady && engineInstance) return true;
+  if (engineInitPromise) return engineInitPromise;
+  engineInitPromise = (async () => {
+    try {
+      if (!window.crossOriginIsolated || typeof SharedArrayBuffer === "undefined") {
+        throw new Error("このページがクロスオリジン分離されていません。ページを再読み込みしてお試しください");
+      }
+      await loadEngineScript();
+      engineInstance = await window.YaneuraOu_nosimd();
+      engineInstance.addMessageListener(engineLine);
+      const usiOk = waitEngineLine(line => line === "usiok", 20000);
+      engineInstance.postMessage("usi");
+      await usiOk;
+      engineInstance.postMessage("setoption name Threads value 1");
+      engineInstance.postMessage("setoption name USI_Hash value 16");
+      const readyOk = waitEngineLine(line => line === "readyok", 20000);
+      engineInstance.postMessage("isready");
+      await readyOk;
+      engineReady = true;
+      engineFailure = "";
+      engineModeLabel = "やねうら王";
+      return true;
+    } catch (error) {
+      engineFailure = error && error.message ? error.message : String(error);
+      engineReady = false;
+      engineModeLabel = "簡易CPU";
+      return false;
+    }
+  })();
+  return engineInitPromise;
+}
+function sfenPiece(p) {
+  const letter = baseType(p.t);
+  const text = (promoted(p.t) ? "+" : "") + letter;
+  return p.s === 1 ? text : text.toLowerCase();
+}
+function stateToSfen(s) {
+  const ranks = [];
+  for (let y=0; y<9; y++) {
+    let rank = "", empty = 0;
+    for (let x=0; x<9; x++) {
+      const p=s.b[y][x];
+      if (!p) { empty++; continue; }
+      if (empty) { rank += empty; empty=0; }
+      rank += sfenPiece(p);
+    }
+    if (empty) rank += empty;
+    ranks.push(rank);
+  }
+  let hand = "";
+  for (const side of [1,2]) {
+    for (const t of ["R","B","G","S","N","L","P"]) {
+      const count = s.hands[side][t] || 0;
+      if (!count) continue;
+      if (count > 1) hand += count;
+      hand += side === 1 ? t : t.toLowerCase();
+    }
+  }
+  return `${ranks.join("/")} ${s.turn===1?"b":"w"} ${hand||"-"} 1`;
+}
+function moveToUsi(m) {
+  const rank = y => "abcdefghi"[y];
+  if (m.drop) return `${m.piece}*${9-m.x}${rank(m.y)}`;
+  return `${9-m.fromX}${rank(m.fromY)}${9-m.x}${rank(m.y)}${m.promote?"+":""}`;
+}
+function parseEngineMove(usi) {
+  const token = String(usi || "").trim().split(/\s+/)[0];
+  if (!token || token === "resign" || token === "win" || token === "0000") return null;
+  const legal = allLegalMoves(state);
+  const found = legal.find(m => moveToUsi(m) === token);
+  if (found) return found;
+  // エンジンが返した指し手を座標へ変換。合法手一覧と不一致なら安全のため採用しない。
+  return null;
+}
+async function engineBestMove(s) {
+  if (!engineReady || !engineInstance) return null;
+  const level = Number(difficultyEl.value);
+  const moveTime = level === 1 ? 250 : level === 2 ? 650 : 1200;
+  const timeout = level === 1 ? 15000 : level === 2 ? 20000 : 25000;
+  const bestMovePromise = waitEngineLine(line => line.startsWith("bestmove "), timeout);
+  engineInstance.postMessage(`position sfen ${stateToSfen(s)}`);
+  engineInstance.postMessage(`go movetime ${moveTime}`);
+  const line = await bestMovePromise;
+  const match = line.match(/^bestmove\s+(\S+)/);
+  return match ? parseEngineMove(match[1]) : null;
+}
+
 
 function initialState() {
   const b = Array.from({length:9}, () => Array(9).fill(null));
@@ -186,7 +315,7 @@ function makeMove(m) {
     statusEl.textContent = inCheck(state,loser) ? (loser===1?"詰みです。CPUの勝ちです":"詰みです。あなたの勝ちです") : (loser===1?"動ける手がありません。CPUの勝ちです":"動ける手がありません。あなたの勝ちです");
     render(); return;
   }
-  statusEl.textContent=state.turn===1?"あなたの番です":"CPUが考えています…";
+  statusEl.textContent=state.turn===1?`あなたの番です（${engineModeLabel}）`:"CPUが考えています…";
   if(state.turn===2) {
     busy=true; render();
     setTimeout(()=>{ cpuTurn(); },80);
@@ -295,25 +424,36 @@ function movePriority(s,m) {
   if(m.drop) v+=1;
   return v;
 }
-function cpuTurn() {
+async function cpuTurn() {
   if(gameOver) {busy=false;render();return;}
   const moves=allLegalMoves(state);
   if(!moves.length) {busy=false;gameOver=true;statusEl.textContent="あなたの勝ちです";render();return;}
-  const level=Number(difficultyEl.value);
-  const depth=level===1?1:(level===2?2:3);
-  // Randomness at level 1; levels 2 and 3 search more deeply.
   let chosen=null;
-  if(level===1) {
-    const ranked=moves.map(m=>({m,score:evaluate(applyMove(state,m))+(Math.random()*100-50)}));
-    ranked.sort((a,b)=>b.score-a.score); chosen=ranked[0].m;
-  } else {
-    let best=-Infinity; const ranked=moves.map(m=>({m,score:0}));
-    // Limit expensive deep search to a shortlist after cheap move ordering.
-    ranked.sort((a,b)=>movePriority(state,b.m)-movePriority(state,a.m));
-    const shortlist=ranked.slice(0, level===2?24:18);
-    for(const item of shortlist) {
-      item.score=minimax(applyMove(state,item.m),depth-1,-Infinity,Infinity,2);
-      if(item.score>best) {best=item.score;chosen=item.m;}
+  if (engineReady) {
+    try {
+      chosen = await engineBestMove(state);
+      if (!chosen) throw new Error("エンジンの指し手を確認できませんでした");
+    } catch (error) {
+      // エンジンが途中で失敗した場合は、対局を止めず簡易CPUへ切り替える。
+      engineReady = false;
+      engineFailure = error && error.message ? error.message : String(error);
+      engineModeLabel = "簡易CPU";
+    }
+  }
+  if (!chosen) {
+    const level=Number(difficultyEl.value);
+    const depth=level===1?1:(level===2?2:3);
+    if(level===1) {
+      const ranked=moves.map(m=>({m,score:evaluate(applyMove(state,m))+(Math.random()*100-50)}));
+      ranked.sort((a,b)=>b.score-a.score); chosen=ranked[0].m;
+    } else {
+      let best=-Infinity; const ranked=moves.map(m=>({m,score:0}));
+      ranked.sort((a,b)=>movePriority(state,b.m)-movePriority(state,a.m));
+      const shortlist=ranked.slice(0, level===2?24:18);
+      for(const item of shortlist) {
+        item.score=minimax(applyMove(state,item.m),depth-1,-Infinity,Infinity,2);
+        if(item.score>best) {best=item.score;chosen=item.m;}
+      }
     }
   }
   busy=false;
@@ -325,14 +465,18 @@ function cpuTurn() {
   selected=null; legalTargets=[];
   if(!allLegalMoves(state).length) {
     gameOver=true; statusEl.textContent=inCheck(state,1)?"詰みです。CPUの勝ちです":"CPUの手がなくなりました。あなたの勝ちです";
-  } else statusEl.textContent="あなたの番です";
+  } else statusEl.textContent=`あなたの番です（${engineModeLabel}）`;
   render();
 }
-startGameBtn.addEventListener("click",()=>{
-  state=initialState(); selected=null; legalTargets=[]; history=[]; busy=false; gameOver=false; lastMove=null;
-  statusEl.textContent="あなたの番です";
+startGameBtn.addEventListener("click", async ()=>{
+  state=initialState(); selected=null; legalTargets=[]; history=[]; busy=true; gameOver=false; lastMove=null;
+  statusEl.textContent="CPUを準備しています…";
   menuScreen.hidden=true;
   gameScreen.hidden=false;
+  render();
+  await ensureEngine();
+  busy=false;
+  statusEl.textContent=engineReady?`あなたの番です（${engineModeLabel}）`:`あなたの番です（簡易CPU）`;
   render();
 });
 backToMenuBtn.addEventListener("click",()=>{
@@ -343,20 +487,14 @@ backToMenuBtn.addEventListener("click",()=>{
 });
 undoBtn.addEventListener("click",()=>{
   if(busy||!history.length) return;
-  // CPUの応手まで終わっている場合は、CPUの手と直前の自分の手を両方戻す。
-  // 自分の手で対局が終了してCPUが指していない場合は、自分の手だけ戻す。
-  const cpuHasReplied = state.turn === 1;
-  const previous = history.pop();
-  state = previous.state;
-  lastMove = previous.lastMove;
-  if(cpuHasReplied && history.length) {
-    const playerPrevious = history.pop();
-    state = playerPrevious.state;
-    lastMove = playerPrevious.lastMove;
+  // Undo one player move and, if present, the CPU reply.
+  const previous=history.pop();
+  state=previous.state; lastMove=previous.lastMove;
+  // CPUの応手前（手番2）まで戻った場合は、プレイヤーの直前の手も取り消す。
+  if(state.turn===2 && history.length && history[history.length-1].state.turn===1) {
+    const prior=history.pop(); state=prior.state; lastMove=prior.lastMove;
   }
-  selected=null; legalTargets=[]; gameOver=false; busy=false;
-  statusEl.textContent="あなたの番です";
-  render();
+  selected=null; legalTargets=[]; gameOver=false; statusEl.textContent="あなたの番です"; render();
 });
 state=initialState(); render();
 

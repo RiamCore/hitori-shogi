@@ -1,0 +1,10 @@
+Third-party notices
+
+yaneuraou-suisho-petite
+- Project: https://github.com/usumerican/yaneuraou-suisho-petite
+- Includes WebAssembly files from dist/nosimd.
+- License: GNU GPL v3.0 (see LICENSE-GPL-3.0.txt).
+- Underlying engine: YaneuraOu (https://github.com/yaneurao/YaneuraOu), GPLv3.
+- Evaluation function: SuishoPetite; see upstream project for attribution and source details.
+
+This is an experimental integration. No claim is made that the engine has been successfully tested on every target browser or iPhone model.

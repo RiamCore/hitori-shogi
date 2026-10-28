@@ -1,6 +1,13 @@
-// ひとり将棋：必要なファイルを端末に保存し、オフラインで起動します。
-const CACHE_NAME = "hitori-shogi-v3";
-const FILES = ["./", "./index.html", "./style.css", "./app.js", "./manifest.json"];
+// ひとり将棋：アプリ本体と将棋エンジンを保存し、オフラインで動作します。
+// GitHub PagesではHTTPヘッダーを直接設定できないため、同一オリジンの応答に
+// COOP / COEPを付け、SharedArrayBufferを必要とするWASMエンジンを試します。
+const CACHE_NAME = "hitori-shogi-engine-test-v1";
+const FILES = [
+  "./", "./index.html", "./style.css", "./app.js", "./manifest.json",
+  "./engine/nosimd/yaneuraou.js",
+  "./engine/nosimd/yaneuraou.wasm",
+  "./engine/nosimd/yaneuraou.worker.js"
+];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(FILES)));
@@ -12,15 +19,41 @@ self.addEventListener("activate", event => {
   );
   self.clients.claim();
 });
+
+function addIsolationHeaders(response) {
+  if (!response || response.type === "opaque") return response;
+  const headers = new Headers(response.headers);
+  headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-      if (response && response.ok) {
+  event.respondWith((async () => {
+    try {
+      const cached = await caches.match(event.request);
+      if (cached) return addIsolationHeaders(cached);
+      const response = await fetch(event.request);
+      if (response && response.ok && new URL(event.request.url).origin === self.location.origin) {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {});
       }
-      return response;
-    }).catch(() => caches.match("./index.html")))
-  );
+      return addIsolationHeaders(response);
+    } catch (error) {
+      const cached = await caches.match(event.request);
+      if (cached) return addIsolationHeaders(cached);
+      if (event.request.mode === "navigate") {
+        const fallback = await caches.match("./index.html");
+        if (fallback) return addIsolationHeaders(fallback);
+      }
+      return new Response("オフラインです。保存済みのページを開いてください。", {
+        status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" }
+      });
+    }
+  })());
 });
