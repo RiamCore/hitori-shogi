@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ひとり将棋">
+<meta name="theme-color" content="#f4ead5">
+<link rel="manifest" href="manifest.json">
+<title>ひとり将棋</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <header>
+    <div>
+      <h1>ひとり将棋</h1>
+      <p id="status" role="status">先手（あなた）の番です</p>
+    </div>
+    <button id="newGame" class="secondary">最初から</button>
+  </header>
+
+  <section class="settings" aria-label="対局設定">
+    <label for="difficulty">CPUの強さ</label>
+    <select id="difficulty">
+      <option value="1">1・やさしい</option>
+      <option value="2" selected>2・ふつう</option>
+      <option value="3">3・つよい</option>
+    </select>
+    <button id="undo" class="secondary">待った</button>
+  </section>
+
+  <section class="captured">
+    <div class="hand-title">CPUの持ち駒</div>
+    <div id="cpuHand" class="hand" aria-label="CPUの持ち駒"></div>
+  </section>
+
+  <section class="board-wrap" aria-label="将棋盤">
+    <div id="board" class="board"></div>
+  </section>
+
+  <section class="captured">
+    <div class="hand-title">あなたの持ち駒（タップして打つ）</div>
+    <div id="playerHand" class="hand" aria-label="あなたの持ち駒"></div>
+  </section>
+
+  <footer>
+    <p>駒をタップしてから、移動先をタップします。</p>
+    <p>成れる場所では確認が出ます。CPUの番は少し待ってください。</p>
+  </footer>
+</main>
+<script src="app.js"></script>
+<script>
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>

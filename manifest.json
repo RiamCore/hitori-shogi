@@ -1,0 +1,11 @@
+{
+  "name": "ひとり将棋",
+  "short_name": "ひとり将棋",
+  "lang": "ja",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4ead5",
+  "theme_color": "#f4ead5",
+  "orientation": "portrait"
+}
