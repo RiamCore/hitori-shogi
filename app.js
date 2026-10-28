@@ -15,6 +15,10 @@ const playerHandEl = document.getElementById("playerHand");
 const statusEl = document.getElementById("status");
 const difficultyEl = document.getElementById("difficulty");
 const undoBtn = document.getElementById("undo");
+const menuScreen = document.getElementById("menuScreen");
+const gameScreen = document.getElementById("gameScreen");
+const startGameBtn = document.getElementById("startGame");
+const backToMenuBtn = document.getElementById("backToMenu");
 let state, selected = null, legalTargets = [], history = [], busy = false, gameOver = false, lastMove = null;
 
 function initialState() {
@@ -250,7 +254,7 @@ function render() {
   }
   renderHand(cpuHandEl,2); renderHand(playerHandEl,1);
   undoBtn.disabled=history.length===0||busy;
-  difficultyEl.disabled=busy;
+  startGameBtn.disabled=busy;
 }
 function evaluate(s) {
   const values={K:10000,R:950,B:850,G:600,S:480,N:380,L:300,P:100};
@@ -324,11 +328,18 @@ function cpuTurn() {
   } else statusEl.textContent="あなたの番です";
   render();
 }
-document.getElementById("newGame").addEventListener("click",()=>{
-  if(busy) return;
-  if(history.length&&!window.confirm("対局を最初からやり直しますか？")) return;
+startGameBtn.addEventListener("click",()=>{
   state=initialState(); selected=null; legalTargets=[]; history=[]; busy=false; gameOver=false; lastMove=null;
-  statusEl.textContent="先手（あなた）の番です"; render();
+  statusEl.textContent="あなたの番です";
+  menuScreen.hidden=true;
+  gameScreen.hidden=false;
+  render();
+});
+backToMenuBtn.addEventListener("click",()=>{
+  if(busy) return;
+  if(history.length&&!window.confirm("対局を中断してメニューに戻りますか？")) return;
+  menuScreen.hidden=false;
+  gameScreen.hidden=true;
 });
 undoBtn.addEventListener("click",()=>{
   if(busy||!history.length) return;
@@ -341,4 +352,5 @@ undoBtn.addEventListener("click",()=>{
   selected=null; legalTargets=[]; gameOver=false; statusEl.textContent="あなたの番です"; render();
 });
 state=initialState(); render();
+
 })();

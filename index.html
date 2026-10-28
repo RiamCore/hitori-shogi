@@ -13,42 +13,46 @@
 </head>
 <body>
 <main class="app">
-  <header>
-    <div>
+  <section id="menuScreen" class="screen menu-screen" aria-label="メニュー">
+    <div class="menu-content">
+      <div class="title-piece" aria-hidden="true">将</div>
       <h1>ひとり将棋</h1>
-      <p id="status" role="status">先手（あなた）の番です</p>
+      <p class="menu-description">CPUと将棋を楽しみましょう</p>
+      <label for="difficulty">CPUの強さ</label>
+      <select id="difficulty">
+        <option value="1">1・やさしい</option>
+        <option value="2" selected>2・ふつう</option>
+        <option value="3">3・つよい</option>
+      </select>
+      <button id="startGame" class="primary">対局開始</button>
+      <p class="menu-note">駒をタップしてから、移動先をタップします。</p>
     </div>
-    <button id="newGame" class="secondary">最初から</button>
-  </header>
-
-  <section class="settings" aria-label="対局設定">
-    <label for="difficulty">CPUの強さ</label>
-    <select id="difficulty">
-      <option value="1">1・やさしい</option>
-      <option value="2" selected>2・ふつう</option>
-      <option value="3">3・つよい</option>
-    </select>
-    <button id="undo" class="secondary">待った</button>
   </section>
 
-  <section class="captured">
-    <div class="hand-title">CPUの持ち駒</div>
-    <div id="cpuHand" class="hand" aria-label="CPUの持ち駒"></div>
-  </section>
+  <section id="gameScreen" class="screen game-screen" hidden aria-label="対局画面">
+    <header class="game-header">
+      <p id="status" role="status">あなたの番です</p>
+      <div class="game-actions">
+        <button id="undo" class="secondary">待った</button>
+        <button id="backToMenu" class="secondary">メニュー</button>
+      </div>
+    </header>
 
-  <section class="board-wrap" aria-label="将棋盤">
-    <div id="board" class="board"></div>
-  </section>
+    <section class="captured cpu-captured">
+      <div class="hand-title">CPUの持ち駒</div>
+      <div id="cpuHand" class="hand" aria-label="CPUの持ち駒"></div>
+    </section>
 
-  <section class="captured">
-    <div class="hand-title">あなたの持ち駒（タップして打つ）</div>
-    <div id="playerHand" class="hand" aria-label="あなたの持ち駒"></div>
-  </section>
+    <section class="board-wrap" aria-label="将棋盤">
+      <div id="board" class="board"></div>
+    </section>
 
-  <footer>
-    <p>駒をタップしてから、移動先をタップします。</p>
-    <p>成れる場所では確認が出ます。CPUの番は少し待ってください。</p>
-  </footer>
+    <section class="captured player-captured">
+      <div class="hand-title">あなたの持ち駒（タップして打つ）</div>
+      <div id="playerHand" class="hand" aria-label="あなたの持ち駒"></div>
+    </section>
+    <p class="play-hint">駒を選び、移動先をタップしてください。</p>
+  </section>
 </main>
 <script src="app.js"></script>
 <script>
