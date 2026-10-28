@@ -343,13 +343,20 @@ backToMenuBtn.addEventListener("click",()=>{
 });
 undoBtn.addEventListener("click",()=>{
   if(busy||!history.length) return;
-  // Undo one player move and, if present, the CPU reply.
-  const previous=history.pop();
-  state=previous.state; lastMove=previous.lastMove;
-  if(state.turn===1 && history.length && history[history.length-1].state.turn===2) {
-    const prior=history.pop(); state=prior.state; lastMove=prior.lastMove;
+  // CPUの応手まで終わっている場合は、CPUの手と直前の自分の手を両方戻す。
+  // 自分の手で対局が終了してCPUが指していない場合は、自分の手だけ戻す。
+  const cpuHasReplied = state.turn === 1;
+  const previous = history.pop();
+  state = previous.state;
+  lastMove = previous.lastMove;
+  if(cpuHasReplied && history.length) {
+    const playerPrevious = history.pop();
+    state = playerPrevious.state;
+    lastMove = playerPrevious.lastMove;
   }
-  selected=null; legalTargets=[]; gameOver=false; statusEl.textContent="あなたの番です"; render();
+  selected=null; legalTargets=[]; gameOver=false; busy=false;
+  statusEl.textContent="あなたの番です";
+  render();
 });
 state=initialState(); render();
 

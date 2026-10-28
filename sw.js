@@ -1,5 +1,5 @@
 // ひとり将棋：必要なファイルを端末に保存し、オフラインで起動します。
-const CACHE_NAME = "hitori-shogi-v2";
+const CACHE_NAME = "hitori-shogi-v3";
 const FILES = ["./", "./index.html", "./style.css", "./app.js", "./manifest.json"];
 
 self.addEventListener("install", event => {
