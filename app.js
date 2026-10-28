@@ -334,6 +334,13 @@ function clickSquare(x,y) {
   const p=state.b[y][x];
   if(selected&&legalTargets.some(m=>m.x===x&&m.y===y)) {
     const m=legalTargets.find(m=>m.x===x&&m.y===y);
+    // 持ち駒を選択している場合は、移動元の盤上の駒を参照せず、打つ手として実行する。
+    // 以前の処理では selected.y / selected.x が存在しないため、ここで例外になっていた。
+    if(selected.hand) {
+      selected=null; legalTargets=[];
+      makeMove(m);
+      return;
+    }
     const piece=state.b[selected.y][selected.x];
     const full={...m,fromX:selected.x,fromY:selected.y};
     selected=null; legalTargets=[];
@@ -360,7 +367,12 @@ function renderHand(el,side) {
     const count=state.hands[side][t]||0; if(!count) continue;
     const btn=document.createElement("button");
     btn.className="hand-piece"+(selected&&selected.hand===t&&side===1?" selected":"");
-    btn.textContent=GLYPH[t]; const small=document.createElement("small"); small.textContent=`×${count}`; btn.appendChild(small);
+    btn.setAttribute("aria-label", `${GLYPH[t]}を打つ、持ち駒${count}枚`);
+    const icon=document.createElement("span");
+    icon.className="piece"+(promoted(t)?" promoted":"");
+    icon.textContent=GLYPH[t];
+    btn.appendChild(icon);
+    const small=document.createElement("small"); small.textContent=`×${count}`; btn.appendChild(small);
     btn.disabled=side!==1||busy||gameOver||state.turn!==1;
     btn.addEventListener("click",()=>clickHand(t)); el.appendChild(btn);
   }
