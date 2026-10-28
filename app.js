@@ -33,6 +33,88 @@ let engineFailure = "";
 let engineLineListeners = [];
 let engineModeLabel = "簡易CPU";
 
+// iPhoneでも動く短い効果音。外部音声ファイルを使わないためオフライン対応。
+let soundContext = null;
+function getSoundContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!soundContext) soundContext = new AudioContextClass();
+  if (soundContext.state === "suspended") soundContext.resume().catch(() => {});
+  return soundContext;
+}
+function playPieceSound() {
+  const ctx = getSoundContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  // 木の駒を盤に置くような、短い「パチッ」という音
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(520, now);
+  osc.frequency.exponentialRampToValueAtTime(155, now + 0.045);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.32, now + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(now); osc.stop(now + 0.08);
+  // ほんの少し高い成分を重ねて、木の打音らしくする
+  const click = ctx.createOscillator();
+  const clickGain = ctx.createGain();
+  click.type = "square";
+  click.frequency.setValueAtTime(1250, now);
+  clickGain.gain.setValueAtTime(0.0001, now);
+  clickGain.gain.exponentialRampToValueAtTime(0.055, now + 0.002);
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+  click.connect(clickGain); clickGain.connect(ctx.destination);
+  click.start(now); click.stop(now + 0.02);
+}
+function playCueTone(kind) {
+  const ctx = getSoundContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const notes = kind === "promotion" ? [660, 880] : [440, 660, 440];
+  notes.forEach((frequency, i) => {
+    const start = now + i * (kind === "promotion" ? 0.12 : 0.10);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.18, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(start); osc.stop(start + 0.17);
+  });
+}
+function speakShogiCue(words, delayMs = 180) {
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
+  // 少し間を空け、駒音や前の案内音声と重ならないようにする
+  window.setTimeout(() => {
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(words);
+      utterance.lang = "ja-JP";
+      utterance.rate = 0.88;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      window.speechSynthesis.speak(utterance);
+    } catch (_) {}
+  }, delayMs);
+}
+function announceMove(m) {
+  playPieceSound();
+  const promotedNow = !!m.promote;
+  const checkNow = inCheck(state, state.turn);
+  if (promotedNow) {
+    playCueTone("promotion");
+    speakShogiCue("成り", 250);
+  }
+  if (checkNow) {
+    playCueTone("check");
+    speakShogiCue("王手", promotedNow ? 1050 : 220);
+  }
+}
+
 function engineLine(line) {
   const text = String(line).trim();
   for (const listener of [...engineLineListeners]) listener(text);
@@ -332,6 +414,7 @@ function makeMove(m) {
   history.push({state:clone(state),lastMove:lastMove?{...lastMove}:null});
   lastMove={x:m.x,y:m.y,fromX:m.fromX,fromY:m.fromY};
   state=applyMove(state,m); selected=null; legalTargets=[];
+  announceMove(m);
   render();
   if(!allLegalMoves(state).length) {
     const loser=state.turn;
@@ -341,7 +424,8 @@ function makeMove(m) {
     finishGame(3-loser, detail);
     return;
   }
-  statusEl.textContent=state.turn===1?`あなたの番です（${engineModeLabel}）`:"CPUが考えています…";
+  const checkText = inCheck(state, state.turn) ? "王手！ " : "";
+  statusEl.textContent=checkText+(state.turn===1?`あなたの番です（${engineModeLabel}）`:"CPUが考えています…");
   if(state.turn===2) {
     busy=true; render();
     setTimeout(()=>{ cpuTurn(); },80);
@@ -499,6 +583,7 @@ async function cpuTurn() {
     history.push({state:clone(state),lastMove:lastMove?{...lastMove}:null});
     lastMove={x:chosen.x,y:chosen.y,fromX:chosen.fromX,fromY:chosen.fromY};
     state=applyMove(state,chosen);
+    announceMove(chosen);
   }
   selected=null; legalTargets=[];
   if(!allLegalMoves(state).length) {
@@ -506,7 +591,7 @@ async function cpuTurn() {
     finishGame(2, inCheck(state,1) ? "詰みです。CPUの勝ちです" : "あなたに指せる手がありません。CPUの勝ちです");
     return;
   }
-  statusEl.textContent=`あなたの番です（${engineModeLabel}）`;
+  statusEl.textContent=(inCheck(state, state.turn) ? "王手！ " : "")+`あなたの番です（${engineModeLabel}）`;
   render();
 }
 startGameBtn.addEventListener("click", async ()=>{
