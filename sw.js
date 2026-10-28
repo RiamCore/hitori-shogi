@@ -1,7 +1,7 @@
 // ひとり将棋：アプリ本体と将棋エンジンを保存し、オフラインで動作します。
 // GitHub PagesではHTTPヘッダーを直接設定できないため、同一オリジンの応答に
 // COOP / COEPを付け、SharedArrayBufferを必要とするWASMエンジンを試します。
-const CACHE_NAME = "hitori-shogi-engine-test-v3";
+const CACHE_NAME = "hitori-shogi-engine-test-v4";
 const FILES = [
   "./", "./index.html", "./style.css", "./app.js", "./manifest.json",
   "./engine/nosimd/yaneuraou.js",
