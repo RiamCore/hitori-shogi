@@ -25,6 +25,25 @@
         <option value="3">3・つよい</option>
       </select>
       <button id="startGame" class="primary">対局開始</button>
+
+      <details class="sound-settings" id="soundSettings">
+        <summary>音量設定</summary>
+        <div class="sound-setting-row">
+          <label for="effectVolume">駒音・チャイム</label>
+          <output id="effectVolumeValue" for="effectVolume">150%</output>
+          <input id="effectVolume" type="range" min="0" max="200" step="10" value="150">
+        </div>
+        <div class="sound-setting-row">
+          <label for="voiceVolume">音声案内（成り・王手）</label>
+          <output id="voiceVolumeValue" for="voiceVolume">100%</output>
+          <input id="voiceVolume" type="range" min="0" max="100" step="10" value="100">
+          <p class="volume-note">音声案内はiPhoneの音量設定も使います。</p>
+        </div>
+        <div class="sound-test-buttons">
+          <button type="button" id="testPieceSound" class="secondary">駒音を試す</button>
+          <button type="button" id="testVoiceSound" class="secondary">音声を試す</button>
+        </div>
+      </details>
       <p class="menu-note">駒をタップしてから、移動先をタップします。<br>エンジンが使えない場合は簡易CPUに切り替わります。</p>
     </div>
   </section>

@@ -33,6 +33,39 @@ let engineFailure = "";
 let engineLineListeners = [];
 let engineModeLabel = "簡易CPU";
 
+// メニューの音量設定。端末内に保存し、次回起動時も引き継ぎます。
+const effectVolumeEl = document.getElementById("effectVolume");
+const voiceVolumeEl = document.getElementById("voiceVolume");
+const effectVolumeValueEl = document.getElementById("effectVolumeValue");
+const voiceVolumeValueEl = document.getElementById("voiceVolumeValue");
+const testPieceSoundBtn = document.getElementById("testPieceSound");
+const testVoiceSoundBtn = document.getElementById("testVoiceSound");
+let effectVolume = 1.5;
+let voiceVolume = 1;
+try {
+  const savedEffect = Number(localStorage.getItem("hitoriShogiEffectVolume"));
+  const savedVoice = Number(localStorage.getItem("hitoriShogiVoiceVolume"));
+  if (localStorage.getItem("hitoriShogiEffectVolume") !== null && Number.isFinite(savedEffect)) effectVolume = Math.max(0, Math.min(2, savedEffect));
+  if (localStorage.getItem("hitoriShogiVoiceVolume") !== null && Number.isFinite(savedVoice)) voiceVolume = Math.max(0, Math.min(1, savedVoice));
+} catch (_) {}
+effectVolumeEl.value = String(Math.round(effectVolume * 100));
+voiceVolumeEl.value = String(Math.round(voiceVolume * 100));
+function updateVolumeLabels() {
+  effectVolumeValueEl.value = `${Math.round(effectVolume * 100)}%`;
+  voiceVolumeValueEl.value = `${Math.round(voiceVolume * 100)}%`;
+}
+updateVolumeLabels();
+effectVolumeEl.addEventListener("input", () => {
+  effectVolume = Number(effectVolumeEl.value) / 100;
+  updateVolumeLabels();
+  try { localStorage.setItem("hitoriShogiEffectVolume", String(effectVolume)); } catch (_) {}
+});
+voiceVolumeEl.addEventListener("input", () => {
+  voiceVolume = Number(voiceVolumeEl.value) / 100;
+  updateVolumeLabels();
+  try { localStorage.setItem("hitoriShogiVoiceVolume", String(voiceVolume)); } catch (_) {}
+});
+
 // iPhoneでも動く短い効果音。外部音声ファイルを使わないためオフライン対応。
 let soundContext = null;
 function getSoundContext() {
@@ -45,14 +78,6 @@ function getSoundContext() {
 function playPieceSound() {
   const ctx = getSoundContext();
   if (!ctx) return;
-  // iOS Safari / Home Screen web apps may leave AudioContext suspended until
-  // a user gesture has unlocked it. Do not schedule sounds against a frozen clock.
-  if (ctx.state !== "running") {
-    ctx.resume().then(() => {
-      if (ctx.state === "running") playPieceSound();
-    }).catch(() => {});
-    return;
-  }
   const now = ctx.currentTime;
   // 木の駒を盤に置くような、短い「パチッ」という音
   const osc = ctx.createOscillator();
@@ -61,7 +86,7 @@ function playPieceSound() {
   osc.frequency.setValueAtTime(520, now);
   osc.frequency.exponentialRampToValueAtTime(155, now + 0.045);
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.32, now + 0.004);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, Math.min(0.85, 0.32 * effectVolume)), now + 0.004);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
   osc.connect(gain); gain.connect(ctx.destination);
   osc.start(now); osc.stop(now + 0.08);
@@ -71,7 +96,7 @@ function playPieceSound() {
   click.type = "square";
   click.frequency.setValueAtTime(1250, now);
   clickGain.gain.setValueAtTime(0.0001, now);
-  clickGain.gain.exponentialRampToValueAtTime(0.055, now + 0.002);
+  clickGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, Math.min(0.25, 0.055 * effectVolume)), now + 0.002);
   clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
   click.connect(clickGain); clickGain.connect(ctx.destination);
   click.start(now); click.stop(now + 0.02);
@@ -79,12 +104,6 @@ function playPieceSound() {
 function playCueTone(kind) {
   const ctx = getSoundContext();
   if (!ctx) return;
-  if (ctx.state !== "running") {
-    ctx.resume().then(() => {
-      if (ctx.state === "running") playCueTone(kind);
-    }).catch(() => {});
-    return;
-  }
   const now = ctx.currentTime;
   const notes = kind === "promotion" ? [660, 880] : [440, 660, 440];
   notes.forEach((frequency, i) => {
@@ -94,36 +113,59 @@ function playCueTone(kind) {
     osc.type = "sine";
     osc.frequency.setValueAtTime(frequency, start);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.18, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, Math.min(0.7, 0.18 * effectVolume)), start + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(start); osc.stop(start + 0.17);
   });
 }
-// Unlock Web Audio during a direct user gesture (important on iPhone Safari/PWA).
-function unlockShogiAudio() {
-  const ctx = getSoundContext();
-  if (ctx && ctx.state !== "running") ctx.resume().catch(() => {});
+let speechPrimed = false;
+function primeShogiSpeech() {
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window) || speechPrimed) return;
+  try {
+    // iOS Safari / ホーム画面Webアプリでは、ユーザー操作中に音声合成を一度開始しないと、
+    // 非同期で動くCPUの着手後に speak() が無音になることがある。無音の短い発話で準備する。
+    const synth = window.speechSynthesis;
+    const primer = new SpeechSynthesisUtterance("あ");
+    primer.lang = "ja-JP";
+    primer.volume = 0;
+    primer.rate = 10;
+    primer.onend = () => { speechPrimed = true; };
+    primer.onerror = () => {};
+    synth.speak(primer);
+    speechPrimed = true;
+  } catch (_) {}
 }
-document.addEventListener("touchstart", unlockShogiAudio, {passive:true, once:true});
-document.addEventListener("pointerdown", unlockShogiAudio, {passive:true, once:true});
-document.addEventListener("click", unlockShogiAudio, {passive:true, once:true});
-
 function speakShogiCue(words, delayMs = 180) {
   if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
   // 少し間を空け、駒音や前の案内音声と重ならないようにする
   window.setTimeout(() => {
     try {
-      window.speechSynthesis.cancel();
+      const synth = window.speechSynthesis;
       const utterance = new SpeechSynthesisUtterance(words);
       utterance.lang = "ja-JP";
       utterance.rate = 0.88;
       utterance.pitch = 1;
-      utterance.volume = 1;
-      window.speechSynthesis.speak(utterance);
+      utterance.volume = voiceVolume;
+      // iOSで日本語音声がすでに利用可能なら明示的に選ぶ
+      const voices = synth.getVoices ? synth.getVoices() : [];
+      const japaneseVoice = voices.find(voice => /^ja([_-]|$)/i.test(voice.lang));
+      if (japaneseVoice) utterance.voice = japaneseVoice;
+      synth.cancel();
+      synth.speak(utterance);
     } catch (_) {}
   }, delayMs);
 }
+testPieceSoundBtn.addEventListener("click", () => {
+  getSoundContext();
+  playPieceSound();
+  playCueTone("promotion");
+});
+testVoiceSoundBtn.addEventListener("click", () => {
+  primeShogiSpeech();
+  speakShogiCue("王手", 0);
+});
+
 function announceMove(m) {
   playPieceSound();
   const promotedNow = !!m.promote;
@@ -618,6 +660,8 @@ async function cpuTurn() {
   render();
 }
 startGameBtn.addEventListener("click", async ()=>{
+  // Start the speech engine inside the direct user gesture before the async engine startup/search.
+  primeShogiSpeech();
   state=initialState(); selected=null; legalTargets=[]; history=[]; busy=true; gameOver=false; lastMove=null;
   resultModal.hidden = true;
   statusEl.textContent="CPUを準備しています…";
