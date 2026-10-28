@@ -19,6 +19,9 @@ const menuScreen = document.getElementById("menuScreen");
 const gameScreen = document.getElementById("gameScreen");
 const startGameBtn = document.getElementById("startGame");
 const backToMenuBtn = document.getElementById("backToMenu");
+const resultModal = document.getElementById("resultModal");
+const resultMessageEl = document.getElementById("resultMessage");
+const resultToMenuBtn = document.getElementById("resultToMenu");
 
 let state, selected = null, legalTargets = [], history = [], busy = false, gameOver = false, lastMove = null;
 
@@ -303,6 +306,27 @@ function moveText(m) {
   const p=state.b[m.fromY][m.fromX];
   return `${file}${rank}${GLYPH[m.promote?PROMOTE[p.t]:p.t]||"駒"}${m.promote?"成":""}`;
 }
+function finishGame(winner, detail) {
+  gameOver = true;
+  busy = false;
+  selected = null;
+  legalTargets = [];
+  const winnerText = winner === 1 ? "あなたの勝ちです！" : "CPUの勝ちです！";
+  resultMessageEl.textContent = winnerText;
+  statusEl.textContent = detail || winnerText;
+  resultModal.hidden = false;
+  render();
+  resultToMenuBtn.focus({preventScroll:true});
+}
+function returnToMenu() {
+  busy = false;
+  resultModal.hidden = true;
+  menuScreen.hidden = false;
+  gameScreen.hidden = true;
+  selected = null;
+  legalTargets = [];
+}
+
 function makeMove(m) {
   if(gameOver||busy) return;
   history.push({state:clone(state),lastMove:lastMove?{...lastMove}:null});
@@ -310,10 +334,12 @@ function makeMove(m) {
   state=applyMove(state,m); selected=null; legalTargets=[];
   render();
   if(!allLegalMoves(state).length) {
-    gameOver=true;
     const loser=state.turn;
-    statusEl.textContent = inCheck(state,loser) ? (loser===1?"詰みです。CPUの勝ちです":"詰みです。あなたの勝ちです") : (loser===1?"動ける手がありません。CPUの勝ちです":"動ける手がありません。あなたの勝ちです");
-    render(); return;
+    const detail = inCheck(state,loser)
+      ? (loser===1 ? "詰みです。CPUの勝ちです" : "詰みです。あなたの勝ちです")
+      : (loser===1 ? "動ける手がありません。CPUの勝ちです" : "動ける手がありません。あなたの勝ちです");
+    finishGame(3-loser, detail);
+    return;
   }
   statusEl.textContent=state.turn===1?`あなたの番です（${engineModeLabel}）`:"CPUが考えています…";
   if(state.turn===2) {
@@ -439,7 +465,7 @@ function movePriority(s,m) {
 async function cpuTurn() {
   if(gameOver) {busy=false;render();return;}
   const moves=allLegalMoves(state);
-  if(!moves.length) {busy=false;gameOver=true;statusEl.textContent="あなたの勝ちです";render();return;}
+  if(!moves.length) { finishGame(1, inCheck(state,2) ? "CPUが詰みました" : "CPUに指せる手がありません"); return; }
   let chosen=null;
   if (engineReady) {
     try {
@@ -476,12 +502,16 @@ async function cpuTurn() {
   }
   selected=null; legalTargets=[];
   if(!allLegalMoves(state).length) {
-    gameOver=true; statusEl.textContent=inCheck(state,1)?"詰みです。CPUの勝ちです":"CPUの手がなくなりました。あなたの勝ちです";
-  } else statusEl.textContent=`あなたの番です（${engineModeLabel}）`;
+    const cpuWon = true; // CPUの手のあと、あなたに合法手がなければCPUの勝ち
+    finishGame(2, inCheck(state,1) ? "詰みです。CPUの勝ちです" : "あなたに指せる手がありません。CPUの勝ちです");
+    return;
+  }
+  statusEl.textContent=`あなたの番です（${engineModeLabel}）`;
   render();
 }
 startGameBtn.addEventListener("click", async ()=>{
   state=initialState(); selected=null; legalTargets=[]; history=[]; busy=true; gameOver=false; lastMove=null;
+  resultModal.hidden = true;
   statusEl.textContent="CPUを準備しています…";
   menuScreen.hidden=true;
   gameScreen.hidden=false;
@@ -493,10 +523,10 @@ startGameBtn.addEventListener("click", async ()=>{
 });
 backToMenuBtn.addEventListener("click",()=>{
   if(busy) return;
-  if(history.length&&!window.confirm("対局を中断してメニューに戻りますか？")) return;
-  menuScreen.hidden=false;
-  gameScreen.hidden=true;
+  if(history.length&&!gameOver&&!window.confirm("対局を中断してメニューに戻りますか？")) return;
+  returnToMenu();
 });
+resultToMenuBtn.addEventListener("click", returnToMenu);
 undoBtn.addEventListener("click",()=>{
   if(busy||!history.length) return;
   // Undo one player move and, if present, the CPU reply.
@@ -506,7 +536,7 @@ undoBtn.addEventListener("click",()=>{
   if(state.turn===2 && history.length && history[history.length-1].state.turn===1) {
     const prior=history.pop(); state=prior.state; lastMove=prior.lastMove;
   }
-  selected=null; legalTargets=[]; gameOver=false; statusEl.textContent="あなたの番です"; render();
+  selected=null; legalTargets=[]; gameOver=false; resultModal.hidden=true; statusEl.textContent="あなたの番です"; render();
 });
 state=initialState(); render();
 

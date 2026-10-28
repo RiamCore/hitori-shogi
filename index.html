@@ -52,6 +52,14 @@
       <div id="playerHand" class="hand" aria-label="あなたの持ち駒"></div>
     </section>
     <p class="play-hint">駒を選び、移動先をタップしてください。</p>
+
+    <div id="resultModal" class="result-modal" hidden role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <div class="result-card">
+        <h2 id="resultTitle">対局終了</h2>
+        <p id="resultMessage" class="result-message">あなたの勝ちです</p>
+        <button id="resultToMenu" class="primary result-menu-button">メニューに戻る</button>
+      </div>
+    </div>
   </section>
 </main>
 <script src="app.js"></script>
