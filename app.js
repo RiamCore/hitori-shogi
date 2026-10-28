@@ -45,6 +45,14 @@ function getSoundContext() {
 function playPieceSound() {
   const ctx = getSoundContext();
   if (!ctx) return;
+  // iOS Safari / Home Screen web apps may leave AudioContext suspended until
+  // a user gesture has unlocked it. Do not schedule sounds against a frozen clock.
+  if (ctx.state !== "running") {
+    ctx.resume().then(() => {
+      if (ctx.state === "running") playPieceSound();
+    }).catch(() => {});
+    return;
+  }
   const now = ctx.currentTime;
   // 木の駒を盤に置くような、短い「パチッ」という音
   const osc = ctx.createOscillator();
@@ -71,6 +79,12 @@ function playPieceSound() {
 function playCueTone(kind) {
   const ctx = getSoundContext();
   if (!ctx) return;
+  if (ctx.state !== "running") {
+    ctx.resume().then(() => {
+      if (ctx.state === "running") playCueTone(kind);
+    }).catch(() => {});
+    return;
+  }
   const now = ctx.currentTime;
   const notes = kind === "promotion" ? [660, 880] : [440, 660, 440];
   notes.forEach((frequency, i) => {
@@ -86,6 +100,15 @@ function playCueTone(kind) {
     osc.start(start); osc.stop(start + 0.17);
   });
 }
+// Unlock Web Audio during a direct user gesture (important on iPhone Safari/PWA).
+function unlockShogiAudio() {
+  const ctx = getSoundContext();
+  if (ctx && ctx.state !== "running") ctx.resume().catch(() => {});
+}
+document.addEventListener("touchstart", unlockShogiAudio, {passive:true, once:true});
+document.addEventListener("pointerdown", unlockShogiAudio, {passive:true, once:true});
+document.addEventListener("click", unlockShogiAudio, {passive:true, once:true});
+
 function speakShogiCue(words, delayMs = 180) {
   if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return;
   // 少し間を空け、駒音や前の案内音声と重ならないようにする
